@@ -6,6 +6,7 @@ import requests
 import json
 import logging
 import re
+
 import emission.storage.timeseries.abstract_timeseries as esta
 import argparse
 import pprint
@@ -105,6 +106,25 @@ def search(api_key, term, location):
     }
     return request(API_HOST, SEARCH_PATH, api_key, url_params=url_params)
 
+def lat_lon_search(api_key, lat, lon, radius):
+    """Query Search API using latitude and longitude.
+    Args:
+        lat (float) : latitude
+        lon (float) : longitude
+        radius (int) : radius of search in meters
+    Returns:
+        dict: The JSON response form the request.
+    """
+    url_params = {
+        'latitude': lat,
+        'longitude': lon,
+        'radius' : radius,
+        'limit': SEARCH_LIMIT,
+        'sort_by': 'distance',
+        'categories' : 'food,restaurants,shopping,hotels,beautysvc,auto,education,collegeuniv,financialservices,publicservicesgovt'
+    }
+    return request(API_HOST, SEARCH_PATH, api_key, url_params=url_params)
+
 """
 YELP API: Function to retrieve all reviews related to the business.
 """
@@ -181,7 +201,20 @@ def find_destination_business_google(lat, lon):
     return return_address_from_google_nomfile(lat, lon)
 
 def find_destination_business_yelp(lat, lon):
-    return (None, None, None, None)
+    yelp_from_lat_lon = lat_lon_search(YELP_API_KEY, lat, lon, 250)
+    if yelp_from_lat_lon == {}:
+        return (None, None, None, False)
+    businesses = yelp_from_lat_lon['businesses']
+    if businesses == []:
+        return find_destination_business(lat, lon)
+    business_name = businesses[0]['name']
+    address = businesses[0]['location']['address1']
+    city = businesses[0]['location']['city']
+    #If there is no commercial establishment in a 50 meter (1/2 block) radius of coordinate
+    #It is safe to assume the area is not a commercial establishment
+    location_is_service = True
+    print((business_name, address, city, location_is_service))
+    return (business_name, address, city, location_is_service)
 
 def find_destination_business_nominatim(lat, lon):
     string_address, address_dict = return_address_from_location_nominatim(lat, lon)
@@ -189,13 +222,13 @@ def find_destination_business_nominatim(lat, lon):
     business_name = address_dict[business_key]
     try:
         city = address_dict['city']
-    except: 
+    except:
         try:
             city = address_dict["town"]
         except:
             try:
                 zipcode = address_dict["postcode"]
-                city = zipcode_to_city(zipcode)  
+                city = zipcode_to_city(zipcode)
             except:
                 city = ''
 
